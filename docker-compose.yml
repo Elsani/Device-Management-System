@@ -1,0 +1,82 @@
+version: '3.8'
+
+services:
+  # 1. Baza e të Dhënave PostgreSQL
+  postgres-db:
+    image: postgres:16-alpine
+    container_name: device_mgmt_postgres
+    restart: always
+    environment:
+      POSTGRES_DB: device_mgmt_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - device_mgmt_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # 2. Serveri Backend (Java 21 / Spring Boot 3)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: device_mgmt_backend
+    restart: always
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-db:5432/device_mgmt_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgrespassword
+      APPLICATION_SECURITY_JWT_SECRET_KEY: 404E635266556A586E3272357538782F413F4428472B4B6250645367566B5970
+      APPLICATION_SECURITY_JWT_EXPIRATION: 86400000
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres-db:
+        condition: service_healthy
+    networks:
+      - device_mgmt_network
+
+  # 3. Ndërfaqja Frontend (React / TypeScript / Nginx)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: device_mgmt_frontend
+    restart: always
+    ports:
+      - "80:80"
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - device_mgmt_network
+
+  # 4. Paneli Vizual i Databazës (pgAdmin)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: device_mgmt_pgadmin
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@devicemanagement.com
+      PGADMIN_DEFAULT_PASSWORD: adminpassword
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres-db
+    networks:
+      - device_mgmt_network
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  device_mgmt_network:
+    driver: bridge
